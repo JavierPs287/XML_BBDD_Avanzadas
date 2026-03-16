@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="root">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="vespaadd" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="document">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="uri"         type="xs:string"/>
+                    <xs:element name="subject"     type="xs:string"/>
+                    <xs:element name="content"     type="xs:string" minOccurs="0"/>
+                    <xs:element name="bestanswer"  type="xs:string"/>
+                    <xs:element name="nbestanswers">
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name="answer_item" type="xs:string" maxOccurs="unbounded"/>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
+                    <xs:element name="cat"         type="xs:string" minOccurs="0"/>
+                    <xs:element name="maincat"     type="xs:string" minOccurs="0"/>
+                    <xs:element name="subcat"      type="xs:string" minOccurs="0"/>
+                    <xs:element name="date"        type="xs:string"/>
+                    <xs:element name="res_date"    type="xs:string" minOccurs="0"/>
+                    <xs:element name="vot_date"    type="xs:string" minOccurs="0"/>
+                    <xs:element name="lastanswerts" type="xs:string"/>
+                    <xs:element name="qlang"       type="xs:string" minOccurs="0"/>
+                    <xs:element name="qintl"       type="xs:string" minOccurs="0"/>
+                    <xs:element name="language"    type="xs:string" minOccurs="0"/>
+                    <xs:element name="id"          type="xs:string"/>
+                    <xs:element name="best_id"     type="xs:string" minOccurs="0"/>
+                  </xs:sequence>
+                  <xs:attribute name="type" type="xs:string"/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
