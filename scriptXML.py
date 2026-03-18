@@ -2,10 +2,14 @@ import xml.etree.ElementTree as ET
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
+import argparse
 
 MIS_TEMAS = ["Food & Drink", "Travel", "Cars & Transportation", "Sports"]
 ARCHIVO_ENTRADA = "FullOct2007.xml"
 ARCHIVO_FILTRADO = "mis_categorias_yahoo.xml"
+# Para pruebas/demo
+ARCHIVO_PREVIEW = "mis_categorias_preview.xml"
+MAX_PREVIEW = 1000
 
 def generar_archivos_soporte():
     """Genera los archivos XSD y XSLT basados en la estructura real del XML."""
@@ -60,25 +64,68 @@ def generar_archivos_soporte():
 <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
   <xsl:template match="/">
     <html>
-      <head><title>Visualización Yahoo Answers</title></head>
+      <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <title>Visualización Yahoo Answers</title>
+        <style type="text/css">
+          html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+          }
+          .wrap {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 16px;
+          }
+          .table-wrap {
+            width: 100%;
+            overflow-x: auto;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+          }
+          th, td {
+            border: 1px solid #cfd8dc;
+            padding: 8px;
+            vertical-align: top;
+            word-wrap: break-word;
+          }
+          th {
+            background: #d3f4ff;
+          }
+          .answer {
+            color: #1f7a1f;
+          }
+        </style>
+      </head>
       <body>
-        <h2 style="font-family: Arial;">Preguntas de mis Categorías</h2>
-        <table border="1" style="border-collapse: collapse; font-family: Arial; width: 100%;">
-          <tr bgcolor="#d3f4ff">
-            <th style="padding: 8px;">Categoría</th>
-            <th style="padding: 8px;">Subcategoría</th>
-            <th style="padding: 8px;">Asunto (Subject)</th>
-            <th style="padding: 8px;">Mejor Respuesta (Best Answer)</th>
-          </tr>
-          <xsl:for-each select="//vespaadd/document">
-            <tr>
-              <td style="padding: 8px;"><b><xsl:value-of select="maincat"/></b></td>
-              <td style="padding: 8px;"><xsl:value-of select="subcat"/></td>
-              <td style="padding: 8px;"><xsl:value-of select="subject"/></td>
-              <td style="padding: 8px; color: green;"><xsl:value-of select="bestanswer"/></td>
-            </tr>
-          </xsl:for-each>
-        </table>
+        <div class="wrap">
+          <h2>Preguntas de mis Categorías</h2>
+          <div class="table-wrap">
+            <table>
+              <tr>
+                <th>Categoría</th>
+                <th>Subcategoría</th>
+                <th>Asunto (Subject)</th>
+                <th>Mejor Respuesta (Best Answer)</th>
+              </tr>
+              <xsl:for-each select="/root/vespaadd/document">
+                <tr>
+                  <td><b><xsl:value-of select="maincat"/></b></td>
+                  <td><xsl:value-of select="subcat"/></td>
+                  <td><xsl:value-of select="subject"/></td>
+                  <td class="answer"><xsl:value-of select="bestanswer" disable-output-escaping="yes"/></td>
+                </tr>
+              </xsl:for-each>
+            </table>
+          </div>
+        </div>
       </body>
     </html>
   </xsl:template>
@@ -90,7 +137,7 @@ def generar_archivos_soporte():
         f.write(xslt_content)
     print("✓ Archivos XSD y XSLT generados correctamente.")
 
-def filtrar_por_categorias(entrada, salida, temas):
+def filtrar_por_categorias(entrada, salida, temas, max_registros=None):
     """Procesa el archivo de 12GB de forma iterativa para no agotar la RAM."""
     print(f"Iniciando filtrado de categorías: {temas}...")
 
@@ -112,6 +159,8 @@ def filtrar_por_categorias(entrada, salida, temas):
                         contador += 1
                         if contador % 10000 == 0:
                             print(f"  Extraídas {contador:,} preguntas...")
+                        if max_registros is not None and contador >= max_registros:
+                          break
 
                     elem.clear()
 
@@ -214,13 +263,32 @@ def cargar_xml_a_mongodb(archivo_xml, db, chunk_size=5000):
         print(f"Error: El archivo '{archivo_xml}' no existe.")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Procesa Yahoo Answers en modo demo o final.")
+    parser.add_argument(
+        "--modo",
+        choices=["demo", "final"],
+        default="demo",
+        help="demo: genera un XML pequeño para visualizar. final: genera XML completo y carga en MongoDB."
+    )
+    args = parser.parse_args()
+
     load_dotenv()
     generar_archivos_soporte()
-    
-    # 1. Filtra y crea el XML reducido
-    filtrar_por_categorias(ARCHIVO_ENTRADA, ARCHIVO_FILTRADO, MIS_TEMAS)
-    
-    # 2. Conecta y carga en MongoDB
-    db = conectar_mongodb()
-    if db is not None:
-        cargar_xml_a_mongodb(ARCHIVO_FILTRADO, db)
+
+    if args.modo == "demo":
+        print(f"Modo demo: generando vista previa con {MAX_PREVIEW} registros...")
+        filtrar_por_categorias(
+            ARCHIVO_ENTRADA,
+            ARCHIVO_PREVIEW,
+            MIS_TEMAS,
+            max_registros=MAX_PREVIEW
+        )
+        print(f"Abre '{ARCHIVO_PREVIEW}' en el navegador con el servidor HTTP.")
+    else:
+        print("Modo final: generando XML completo y cargando en MongoDB...")
+        filtrar_por_categorias(ARCHIVO_ENTRADA, ARCHIVO_FILTRADO, MIS_TEMAS)
+
+        db = conectar_mongodb()
+        if db is not None:
+            db.drop_collection('preguntas')  # Limpiar la colección antes de cargar nuevos datos
+            cargar_xml_a_mongodb(ARCHIVO_FILTRADO, db)
