@@ -1,4 +1,8 @@
 import xml.etree.ElementTree as ET
+import pandas as pd
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+import os
 
 MIS_TEMAS = ["Food & Drink", "Travel", "Cars & Transportation", "Sports"]
 ARCHIVO_ENTRADA = "FullOct2007.xml"
@@ -137,7 +141,96 @@ def leer_temas(archivo):
     for tema in sorted(temas):
         print(f"  - {tema}")
 
+def conectar_mysql():
+    try:
+        engine = create_engine(
+            f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}/{os.getenv('DB_NAME')}")
+        print("Conexión exitosa.")
+        return engine
+    except Exception as e:
+        print(f"Error al conectar: {e}")
+        return None
+
+def cargar_xml_a_mysql(archivo_xml, engine, chunk_size=5000):
+    """Parsea iterativamente el XML y lo carga a MySQL usando pandas en lotes."""
+    print(f"Iniciando carga a MySQL desde '{archivo_xml}'...")
+    
+    preguntas_batch = []
+    respuestas_batch = []
+    contador = 0
+    first_batch = True
+    
+    try:
+        context = ET.iterparse(archivo_xml, events=("end",))
+        for event, elem in context:
+            if elem.tag == "vespaadd":
+                doc = elem.find("document")
+                if doc is not None:
+                    pregunta_id = doc.findtext("id")
+                    
+                    # Extraer información de la pregunta
+                    pregunta = {
+                        "id": pregunta_id,
+                        "uri": doc.findtext("uri"),
+                        "subject": doc.findtext("subject"),
+                        "content": doc.findtext("content"),
+                        "bestanswer": doc.findtext("bestanswer"),
+                        "cat": doc.findtext("cat"),
+                        "maincat": doc.findtext("maincat"),
+                        "subcat": doc.findtext("subcat"),
+                        "date": doc.findtext("date"),
+                        "res_date": doc.findtext("res_date"),
+                        "lastanswerts": doc.findtext("lastanswerts")
+                    }
+                    preguntas_batch.append(pregunta)
+                    
+                    # Extraer respuestas alternativas
+                    nbestanswers = doc.find("nbestanswers")
+                    if nbestanswers is not None:
+                        for answer in nbestanswers.findall("answer_item"):
+                            if answer.text:
+                                respuestas_batch.append({
+                                    "pregunta_id": pregunta_id,
+                                    "answer_text": answer.text
+                                })
+                    
+                    contador += 1
+                    
+                    # Volcar el lote a la base de datos para salvar RAM
+                    if contador % chunk_size == 0:
+                        modo = 'replace' if first_batch else 'append'
+                        
+                        if preguntas_batch:
+                            pd.DataFrame(preguntas_batch).to_sql('dim_preguntas', engine, if_exists=modo, index=False)
+                        if respuestas_batch:
+                            pd.DataFrame(respuestas_batch).to_sql('fact_respuestas', engine, if_exists=modo, index=False)
+                        
+                        first_batch = False
+                        preguntas_batch = []
+                        respuestas_batch = []
+                        print(f"  Insertados {contador:,} registros a MySQL...")
+                
+                elem.clear() # Liberar memoria
+        
+        # Insertar los registros restantes que quedaron en el buffer
+        if preguntas_batch or respuestas_batch:
+            modo = 'replace' if first_batch else 'append'
+            if preguntas_batch:
+                pd.DataFrame(preguntas_batch).to_sql('dim_preguntas', engine, if_exists=modo, index=False)
+            if respuestas_batch:
+                pd.DataFrame(respuestas_batch).to_sql('fact_respuestas', engine, if_exists=modo, index=False)
+            
+        print(f"✓ Carga finalizada con éxito en la Base de Datos. Total de preguntas extraídas: {contador:,}")
+        
+    except ET.ParseError as e:
+        print(f"Error parseando el archivo XML: {e}")
+    except FileNotFoundError:
+        print(f"Error: El archivo '{archivo_xml}' no existe.")
+
 if __name__ == "__main__":
+    load_dotenv()
     generar_archivos_soporte()
     # leer_temas(ARCHIVO_ENTRADA)
     filtrar_por_categorias(ARCHIVO_ENTRADA, ARCHIVO_FILTRADO, MIS_TEMAS)
+    engine = conectar_mysql()
+    cargar_xml_a_mysql(ARCHIVO_FILTRADO, engine)
