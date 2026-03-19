@@ -192,7 +192,6 @@ def leer_temas(archivo):
 def conectar_mongodb():
     """Conecta a MongoDB usando variables de entorno (como hacías con MySQL) o local por defecto."""
     try:
-        # Usa la variable de entorno MONGO_URI si existe, si no, usa el puerto local estándar
         uri = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
         client = MongoClient(uri)
         db = client[os.getenv('DB_NAME', 'yahoo_answers')]
@@ -217,21 +216,25 @@ def cargar_xml_a_mongodb(archivo_xml, db, chunk_size=5000):
                 doc = elem.find("document")
                 if doc is not None:
                     
-                    # Extraer información de la pregunta
                     pregunta = {
-                        "id": doc.findtext("id"),
-                        "uri": doc.findtext("uri"),
+                        "id_usuario_pregunta": doc.findtext("id"),          
+                        "id_usuario_mejor_respuesta": doc.findtext("best_id"), 
+                        "uri_pregunta": doc.findtext("uri"),                
                         "subject": doc.findtext("subject"),
                         "content": doc.findtext("content"),
                         "bestanswer": doc.findtext("bestanswer"),
                         "cat": doc.findtext("cat"),
                         "maincat": doc.findtext("maincat"),
                         "subcat": doc.findtext("subcat"),
-                        "date": doc.findtext("date"),
-                        "res_date": doc.findtext("res_date"),
+                        
+                        # Convertimos las fechas a enteros (int) para poder hacer < o > en MongoDB
+                        "date": int(doc.findtext("date")) if doc.findtext("date") else None,
+                        "res_date": int(doc.findtext("res_date")) if doc.findtext("res_date") else None,
+                        
                         "lastanswerts": doc.findtext("lastanswerts"),
                         "otras_respuestas": [] # Array para embeber las respuestas (Diseño Documental)
                     }
+                    # ----------------------------------------------------
                     
                     # Extraer respuestas alternativas e insertarlas en la misma pregunta
                     nbestanswers = doc.find("nbestanswers")
@@ -243,7 +246,7 @@ def cargar_xml_a_mongodb(archivo_xml, db, chunk_size=5000):
                     preguntas_batch.append(pregunta)
                     contador += 1
                     
-                    # Volcar el lote a la base de datos para salvar RAM (usando insert_many en vez de pandas)
+                    # Volcar el lote a la base de datos para salvar RAM (usando insert_many)
                     if contador % chunk_size == 0:
                         coleccion.insert_many(preguntas_batch)
                         preguntas_batch = []
